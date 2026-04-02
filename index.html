@@ -60,7 +60,7 @@
             overflow: hidden;
             position: sticky;
             top: 0;
-            z-index: 9999;
+            z-index: 100;
         }
         .ticker-track {
             display: inline-flex;
@@ -236,7 +236,7 @@
             position: fixed;
             inset: 0;
             background: rgba(0,0,0,0.65);
-            z-index: 1000;
+            z-index: 1005;
             backdrop-filter: blur(2px);
         }
         .sidebar-overlay.active { display: block; }
@@ -292,6 +292,7 @@
                 transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
                 width: 260px;
                 min-width: 260px;
+                padding-top: 56px; /* spazio per header mobile */
             }
             .sidebar.open {
                 transform: translateX(0);
@@ -726,16 +727,41 @@ async function updateTicker() {
 }
 
 /* ── NEWS ── */
+async function fetchRSS(rss) {
+    const res = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(rss) + '&count=7');
+    const d   = await res.json();
+    if (!d.items || !d.items.length) throw new Error('no items');
+    return d.items;
+}
+
+async function loadNewsWithFallback(primaryRss, fallbackRss, id) {
+    let items = null;
+    try { items = await fetchRSS(primaryRss); } catch(e) {
+        console.warn('RSS primary failed [' + id + '], trying fallback:', e);
+    }
+    if (!items) {
+        try { items = await fetchRSS(fallbackRss); } catch(e) {
+            console.warn('RSS fallback failed [' + id + ']:', e);
+        }
+    }
+    if (!items) {
+        document.getElementById(id).innerHTML = '<li style="color:var(--dim);font-size:12px;">Feed temporaneamente non disponibile</li>';
+        return;
+    }
+    document.getElementById(id).innerHTML = items.slice(0, 7).map(function(n) {
+        return '<li><a href="' + n.link + '" target="_blank" rel="noopener noreferrer">' + n.title + '</a></li>';
+    }).join('');
+}
+
 async function loadNews(rss, id) {
     try {
-        const res = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(rss));
-        const d   = await res.json();
-        if (!d.items || !d.items.length) return;
-        document.getElementById(id).innerHTML = d.items.slice(0, 7).map(function(n) {
+        const items = await fetchRSS(rss);
+        document.getElementById(id).innerHTML = items.slice(0, 7).map(function(n) {
             return '<li><a href="' + n.link + '" target="_blank" rel="noopener noreferrer">' + n.title + '</a></li>';
         }).join('');
     } catch(e) {
         console.warn('RSS error [' + id + ']:', e);
+        document.getElementById(id).innerHTML = '<li style="color:var(--dim);font-size:12px;">Feed temporaneamente non disponibile</li>';
     }
 }
 
@@ -744,7 +770,7 @@ window.addEventListener('DOMContentLoaded', function() {
     updateYoung();
     updateTicker();
     setInterval(updateTicker, 60000);
-    loadNews('https://it.cointelegraph.com/rss',    'f-ct');
+    loadNewsWithFallback('https://it.cointelegraph.com/rss', 'https://cointelegraph.com/rss', 'f-ct');
     loadNews('https://www.criptovaluta.it/feed',     'f-ci');
     loadNews('https://thecryptogateway.it/feed/',    'f-tg');
 });
